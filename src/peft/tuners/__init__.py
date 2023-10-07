@@ -19,7 +19,7 @@
 
 from .adaption_prompt import AdaptionPromptConfig, AdaptionPromptModel
 from .lora import LoraConfig, LoraModel
-from .mulch_lora import MulchLoraConfig, MulchLoraModel
+from .rellora import RelLoraConfig, RelLoraModel
 from .ia3 import IA3Config, IA3Model
 from .adalora import AdaLoraConfig, AdaLoraModel
 from .p_tuning import PromptEncoder, PromptEncoderConfig, PromptEncoderReparameterizationType

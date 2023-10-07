@@ -37,8 +37,8 @@ from .tuners import (
     IA3Model,
     LoraConfig,
     LoraModel,
-    MulchLoraConfig,
-    MulchLoraModel,
+    RelLoraConfig,
+    RelLoraModel,
     PrefixTuningConfig,
     PromptEncoderConfig,
     PromptTuningConfig,
@@ -65,14 +65,14 @@ PEFT_TYPE_TO_CONFIG_MAPPING = {
     "PREFIX_TUNING": PrefixTuningConfig,
     "P_TUNING": PromptEncoderConfig,
     "LORA": LoraConfig,
-    "MULCHLORA": MulchLoraConfig,
+    "RELLORA": RelLoraConfig,
     "ADALORA": AdaLoraConfig,
     "IA3": IA3Config,
 }
 
 PEFT_TYPE_TO_TUNER_MAPPING = {
     "LORA": LoraModel,
-    "MULCHLORA": MulchLoraModel,
+    "RELLORA": RelLoraModel,
     "ADALORA": AdaLoraModel,
     "IA3": IA3Model,
 }

@@ -40,7 +40,7 @@ from .tuners import (
     AdaptionPromptModel,
     IA3Model,
     LoraModel,
-    MulchLoraModel,
+    RelLoraModel,
     PrefixEncoder,
     PromptEmbedding,
     PromptEncoder,
@@ -66,7 +66,7 @@ from .utils import (
 
 PEFT_TYPE_TO_MODEL_MAPPING = {
     PeftType.LORA: LoraModel,
-    PeftType.MULCHLORA: MulchLoraModel,
+    PeftType.RELLORA: RelLoraModel,
     PeftType.PROMPT_TUNING: PromptEmbedding,
     PeftType.P_TUNING: PromptEncoder,
     PeftType.PREFIX_TUNING: PrefixEncoder,
