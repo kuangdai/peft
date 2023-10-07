@@ -30,7 +30,7 @@ from ..import_utils import is_bnb_4bit_available, is_bnb_available
 from ..utils import (
     CLAMP_QUANTILE,
     COMMON_LAYERS_PATTERN,
-    TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING,
+    TRANSFORMERS_MODELS_TO_RELLORA_TARGET_MODULES_MAPPING,
     ModulesToSaveWrapper,
     PeftType,
     _freeze_adapter,
@@ -47,9 +47,9 @@ if is_bnb_available():
 
 
 @dataclass
-class LoraConfig(PeftConfig):
+class RelLoraConfig(PeftConfig):
     """
-    This is the configuration class to store the configuration of a [`LoraModel`].
+    This is the configuration class to store the configuration of a [`RelLoraModel`].
 
     Args:
         r (`int`): Lora attention dimension.
@@ -119,10 +119,10 @@ class LoraConfig(PeftConfig):
     )
 
     def __post_init__(self):
-        self.peft_type = PeftType.LORA
+        self.peft_type = PeftType.RELLORA
 
 
-class LoraLayer(BaseTunerLayer):
+class RelLoraLayer(BaseTunerLayer):
     def __init__(self, in_features: int, out_features: int, **kwargs):
         self.r = {}
         self.lora_alpha = {}
@@ -214,25 +214,25 @@ class LoraLayer(BaseTunerLayer):
             nn.init.normal_(self.lora_embedding_B[adapter_name])
 
 
-class LoraModel(BaseTuner):
+class RelLoraModel(BaseTuner):
     """
-    Creates Low Rank Adapter (Lora) model from a pretrained transformers model.
+    Creates Relative Low Rank Adapter (RelLora) model from a pretrained transformers model.
 
     Args:
         model ([`~transformers.PreTrainedModel`]): The model to be adapted.
-        config ([`LoraConfig`]): The configuration of the Lora model.
+        config ([`RelLoraConfig`]): The configuration of the RelLora model.
         adapter_name (`str`): The name of the adapter, defaults to `"default"`.
 
     Returns:
-        `torch.nn.Module`: The Lora model.
+        `torch.nn.Module`: The RelLora model.
 
     Example:
 
         ```py
         >>> from transformers import AutoModelForSeq2SeqLM
-        >>> from peft import LoraModel, LoraConfig
+        >>> from peft import RelLoraModel, RelLoraConfig
 
-        >>> config = LoraConfig(
+        >>> config = RelLoraConfig(
         ...     task_type="SEQ_2_SEQ_LM",
         ...     r=8,
         ...     lora_alpha=32,
@@ -241,15 +241,15 @@ class LoraModel(BaseTuner):
         ... )
 
         >>> model = AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        >>> lora_model = LoraModel(model, config, "default")
+        >>> lora_model = RelLoraModel(model, config, "default")
         ```
 
         ```py
         >>> import transformers
-        >>> from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_int8_training
+        >>> from peft import RelLoraConfig, PeftModel, get_peft_model, prepare_model_for_int8_training
 
         >>> target_modules = ["q_proj", "k_proj", "v_proj", "out_proj", "fc_in", "fc_out", "wte"]
-        >>> config = LoraConfig(
+        >>> config = RelLoraConfig(
         ...     r=4, lora_alpha=16, target_modules=target_modules, lora_dropout=0.1, bias="none", task_type="CAUSAL_LM"
         ... )
 
@@ -268,13 +268,13 @@ class LoraModel(BaseTuner):
 
     **Attributes**:
         - **model** ([`~transformers.PreTrainedModel`]) -- The model to be adapted.
-        - **peft_config** ([`LoraConfig`]): The configuration of the Lora model.
+        - **peft_config** ([`RelLoraConfig`]): The configuration of the RelLora model.
     """
 
     def __init__(self, model, config, adapter_name) -> None:
         super().__init__(model, config, adapter_name)
 
-    def _check_new_adapter_config(self, config: LoraConfig) -> None:
+    def _check_new_adapter_config(self, config: RelLoraConfig) -> None:
         """
         A helper method to check the config when a new adapter is being added.
 
@@ -344,7 +344,7 @@ class LoraModel(BaseTuner):
             kwargs["gptq_quantization_config"] = quantization_config
 
         # TODO: better deal with that
-        if isinstance(target, LoraLayer) and isinstance(target, torch.nn.Conv2d):
+        if isinstance(target, RelLoraLayer) and isinstance(target, torch.nn.Conv2d):
             target.update_layer_conv2d(
                 adapter_name,
                 lora_config.r,
@@ -352,7 +352,7 @@ class LoraModel(BaseTuner):
                 lora_config.lora_dropout,
                 lora_config.init_lora_weights,
             )
-        elif isinstance(target, LoraLayer) and isinstance(target, torch.nn.Embedding):
+        elif isinstance(target, RelLoraLayer) and isinstance(target, torch.nn.Embedding):
             target.update_layer_embedding(
                 adapter_name,
                 lora_config.r,
@@ -361,7 +361,7 @@ class LoraModel(BaseTuner):
                 lora_config.init_lora_weights,
             )
 
-        elif isinstance(target, LoraLayer):
+        elif isinstance(target, RelLoraLayer):
             target.update_layer(
                 adapter_name,
                 lora_config.r,
@@ -407,7 +407,7 @@ class LoraModel(BaseTuner):
                     p.requires_grad = True
         elif bias == "lora_only":
             for m in self.model.modules():
-                if isinstance(m, LoraLayer) and hasattr(m, "bias") and m.bias is not None:
+                if isinstance(m, RelLoraLayer) and hasattr(m, "bias") and m.bias is not None:
                     m.bias.requires_grad = True
         else:
             raise NotImplementedError
@@ -505,7 +505,7 @@ class LoraModel(BaseTuner):
 
     def _set_adapter_layers(self, enabled=True):
         for module in self.model.modules():
-            if isinstance(module, LoraLayer):
+            if isinstance(module, RelLoraLayer):
                 module.disable_adapters = False if enabled else True
             elif isinstance(module, ModulesToSaveWrapper):
                 module.disable_adapters = False if enabled else True
@@ -516,7 +516,7 @@ class LoraModel(BaseTuner):
     def _get_active_adapter(self) -> str:
         active_adapter = None
         for module in self.model.modules():
-            if isinstance(module, LoraLayer):
+            if isinstance(module, RelLoraLayer):
                 active_adapter = module.active_adapter
 
         if active_adapter is None:
@@ -538,7 +538,7 @@ class LoraModel(BaseTuner):
 
     def set_adapter(self, adapter_name):
         for module in self.model.modules():
-            if isinstance(module, LoraLayer):
+            if isinstance(module, RelLoraLayer):
                 if module.merged:
                     warnings.warn("Adapter cannot be set when the model is merged. Unmerging the model first.")
                     module.unmerge()
@@ -547,9 +547,9 @@ class LoraModel(BaseTuner):
     @staticmethod
     def _prepare_adapter_config(peft_config, model_config):
         if peft_config.target_modules is None:
-            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING:
+            if model_config["model_type"] not in TRANSFORMERS_MODELS_TO_RELLORA_TARGET_MODULES_MAPPING:
                 raise ValueError("Please specify `target_modules` in `peft_config`")
-            peft_config.target_modules = TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING[model_config["model_type"]]
+            peft_config.target_modules = TRANSFORMERS_MODELS_TO_RELLORA_TARGET_MODULES_MAPPING[model_config["model_type"]]
         return peft_config
 
     def _unload_and_optionally_merge(self, merge=True, progressbar: bool = False):
@@ -565,7 +565,7 @@ class LoraModel(BaseTuner):
                 parent, target, target_name = _get_submodules(self.model, key)
             except AttributeError:
                 continue
-            if isinstance(target, LoraLayer):
+            if isinstance(target, RelLoraLayer):
                 if isinstance(target, nn.Embedding):
                     new_module = torch.nn.Embedding(target.in_features, target.out_features)
                 elif isinstance(target, nn.Conv2d):
@@ -633,7 +633,7 @@ class LoraModel(BaseTuner):
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
-            if isinstance(target, LoraLayer):
+            if isinstance(target, RelLoraLayer):
                 if adapter_name in target.lora_A:
                     target_lora_A = target.lora_A[adapter_name].weight
                     target_lora_B = target.lora_B[adapter_name].weight
@@ -701,7 +701,7 @@ class LoraModel(BaseTuner):
         key_list = [key for key, _ in self.model.named_modules() if "lora" not in key]
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
-            if isinstance(target, LoraLayer):
+            if isinstance(target, RelLoraLayer):
                 for attr in [
                     "r",
                     "lora_alpha",
@@ -761,7 +761,7 @@ class LoraModel(BaseTuner):
 #  ------------------------------------------------------------------------------------------
 
 
-class Linear(nn.Linear, LoraLayer):
+class Linear(nn.Linear, RelLoraLayer):
     # Lora implemented in a dense layer
     def __init__(
         self,
@@ -778,7 +778,7 @@ class Linear(nn.Linear, LoraLayer):
         init_lora_weights = kwargs.pop("init_lora_weights", True)
 
         nn.Linear.__init__(self, in_features, out_features, **kwargs)
-        LoraLayer.__init__(self, in_features=in_features, out_features=out_features)
+        RelLoraLayer.__init__(self, in_features=in_features, out_features=out_features)
         # Freezing the pre-trained weight matrix
         self.weight.requires_grad = False
 
@@ -798,7 +798,10 @@ class Linear(nn.Linear, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data += self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data *= (1. + self.get_delta_weight(self.active_adapter))
             self.merged = True
 
     def unmerge(self):
@@ -808,7 +811,10 @@ class Linear(nn.Linear, LoraLayer):
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data -= self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data /= (1. + self.get_delta_weight(self.active_adapter))
             self.merged = False
 
     def get_delta_weight(self, adapter):
@@ -832,8 +838,10 @@ class Linear(nn.Linear, LoraLayer):
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 
             x = x.to(self.lora_A[self.active_adapter].weight.dtype)
-
-            result += (
+            #######
+            # KEY #
+            #######
+            result *= (1. +
                 self.lora_B[self.active_adapter](
                     self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                 )
@@ -847,7 +855,7 @@ class Linear(nn.Linear, LoraLayer):
         return result
 
 
-class Embedding(nn.Embedding, LoraLayer):
+class Embedding(nn.Embedding, RelLoraLayer):
     # LoRA implemented in a Embedding layer
     def __init__(
         self,
@@ -862,7 +870,7 @@ class Embedding(nn.Embedding, LoraLayer):
         init_lora_weights = kwargs.pop("init_lora_weights", True)
 
         nn.Embedding.__init__(self, num_embeddings, embedding_dim, **kwargs)
-        LoraLayer.__init__(self, in_features=num_embeddings, out_features=embedding_dim)
+        RelLoraLayer.__init__(self, in_features=num_embeddings, out_features=embedding_dim)
 
         self.weight.requires_grad = False
 
@@ -875,7 +883,10 @@ class Embedding(nn.Embedding, LoraLayer):
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data -= self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data /= (1. + self.get_delta_weight(self.active_adapter))
             self.merged = False
 
     def merge(self):
@@ -883,7 +894,10 @@ class Embedding(nn.Embedding, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data += self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data *= (1. + self.get_delta_weight(self.active_adapter))
             self.merged = True
 
     def get_delta_weight(self, adapter):
@@ -907,13 +921,16 @@ class Embedding(nn.Embedding, LoraLayer):
                     self.scale_grad_by_freq,
                     self.sparse,
                 )
-                result += (after_A @ self.lora_embedding_B[self.active_adapter].T) * self.scaling[self.active_adapter]
+                #######
+                # KEY #
+                #######
+                result *= 1. + ((after_A @ self.lora_embedding_B[self.active_adapter].T) * self.scaling[self.active_adapter])
             return result
         else:
             return nn.Embedding.forward(self, x)
 
 
-class Conv2d(nn.Conv2d, LoraLayer):
+class Conv2d(nn.Conv2d, RelLoraLayer):
     # Lora implemented in a conv2d layer
     def __init__(
         self,
@@ -931,7 +948,7 @@ class Conv2d(nn.Conv2d, LoraLayer):
         init_lora_weights = kwargs.pop("init_lora_weights", True)
 
         nn.Conv2d.__init__(self, in_channels, out_channels, kernel_size, stride, padding)
-        LoraLayer.__init__(
+        RelLoraLayer.__init__(
             self,
             in_features=in_channels,
             out_features=out_channels,
@@ -953,7 +970,10 @@ class Conv2d(nn.Conv2d, LoraLayer):
             warnings.warn("Already merged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data += self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data *= 1. + self.get_delta_weight(self.active_adapter)
             self.merged = True
 
     def unmerge(self):
@@ -963,7 +983,10 @@ class Conv2d(nn.Conv2d, LoraLayer):
             warnings.warn("Already unmerged. Nothing to do.")
             return
         if self.r[self.active_adapter] > 0:
-            self.weight.data -= self.get_delta_weight(self.active_adapter)
+            #######
+            # KEY #
+            #######
+            self.weight.data /= 1. + self.get_delta_weight(self.active_adapter)
             self.merged = False
 
     def get_delta_weight(self, adapter):
@@ -1020,8 +1043,10 @@ class Conv2d(nn.Conv2d, LoraLayer):
             )
 
             x = x.to(self.lora_A[self.active_adapter].weight.dtype)
-
-            result += (
+            #######
+            # KEY #
+            #######
+            result *= (1. +
                 self.lora_B[self.active_adapter](
                     self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
                 )
@@ -1045,7 +1070,7 @@ class Conv2d(nn.Conv2d, LoraLayer):
 
 if is_bnb_available():
 
-    class Linear8bitLt(bnb.nn.Linear8bitLt, LoraLayer):
+    class Linear8bitLt(bnb.nn.Linear8bitLt, RelLoraLayer):
         # Lora implemented in a dense layer
         def __init__(
             self,
@@ -1067,7 +1092,7 @@ if is_bnb_available():
                 threshold=kwargs.get("threshold", 0.0),
                 index=kwargs.get("index", None),
             )
-            LoraLayer.__init__(self, in_features=in_features, out_features=out_features)
+            RelLoraLayer.__init__(self, in_features=in_features, out_features=out_features)
 
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
@@ -1099,12 +1124,15 @@ if is_bnb_available():
                         )
                         * self.scaling[self.active_adapter]
                     )
-                result += output
+                #######
+                # KEY #
+                #######
+                result *= 1. + output
             return result
 
     if is_bnb_4bit_available():
 
-        class Linear4bit(bnb.nn.Linear4bit, LoraLayer):
+        class Linear4bit(bnb.nn.Linear4bit, RelLoraLayer):
             # Lora implemented in a dense layer
             def __init__(
                 self,
@@ -1125,7 +1153,7 @@ if is_bnb_available():
                     compress_statistics=kwargs.get("compress_statistics", True),
                     quant_type=kwargs.get("quant_type", "nf4"),
                 )
-                LoraLayer.__init__(self, in_features=in_features, out_features=out_features)
+                RelLoraLayer.__init__(self, in_features=in_features, out_features=out_features)
 
                 # Freezing the pre-trained weight matrix
                 self.weight.requires_grad = False
@@ -1157,11 +1185,14 @@ if is_bnb_available():
                             )
                             * self.scaling[self.active_adapter]
                         )
-                    result += output
+                    #######
+                    # KEY #
+                    #######
+                    result *= 1. + output
                 return result
 
 
-class QuantLinear(torch.nn.Module, LoraLayer):
+class QuantLinear(torch.nn.Module, RelLoraLayer):
     def __init__(
         self,
         adapter_name,
@@ -1172,7 +1203,7 @@ class QuantLinear(torch.nn.Module, LoraLayer):
         **kwargs,
     ):
         torch.nn.Module.__init__(self)
-        LoraLayer.__init__(
+        RelLoraLayer.__init__(
             self, in_features=quant_linear_module.infeatures, out_features=quant_linear_module.outfeatures
         )
         self.quant_linear_module = quant_linear_module
@@ -1203,7 +1234,10 @@ class QuantLinear(torch.nn.Module, LoraLayer):
                     )
                     * self.scaling[self.active_adapter]
                 )
-            result += output
+            #######
+            # KEY #
+            #######
+            result *= 1. + output
         return result
 
     # TODO: Check if it is better as suggested by users https://github.com/PanQiWei/AutoGPTQ/pull/102
